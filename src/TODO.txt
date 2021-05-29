@@ -1,3 +1,4 @@
 Lexer
-[ ] read_char, peek_char
-[ ] test of read_char, peek_char
+[x] read_char, peek_char
+[x] test of read_char, peek_char
+[ ] read_token
