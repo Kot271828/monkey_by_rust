@@ -24,7 +24,7 @@ impl Lexer {
         return_value
     }
 
-    fn peek_char(&mut self) -> Option<char> {
+    fn peek_char(&self) -> Option<char> {
         if self.next_read_index < self.input.len() {
             Some(self.input[self.next_read_index])
         } else {

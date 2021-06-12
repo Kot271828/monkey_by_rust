@@ -26,7 +26,7 @@ impl Program {
 // StatementNode
 pub enum StatementNode {
     LetStatement {
-        identifier: ExpressionNode,
+        identifier: Box<ExpressionNode>,
         value: Box<ExpressionNode>,
     },
     ReturnStatement {
@@ -57,7 +57,7 @@ impl StatementNode {
                 for statement in statements {
                     literal = format!("{} {}", literal, statement.literal());
                 }
-                format!("{{{}}}", literal)
+                format!("{{{} }}", literal)
             }
         }
     }
@@ -110,12 +110,12 @@ pub enum ExpressionNode {
         alternative: Option<Box<StatementNode>>,
     },
     FunctionLiteral {
-        parameters: Vec<ExpressionNode>,
+        parameters: Vec<Box<ExpressionNode>>,
         body: Box<StatementNode>,
     },
     CallExpression {
         function: Box<ExpressionNode>,
-        arguments: Vec<ExpressionNode>,
+        arguments: Vec<Box<ExpressionNode>>,
     },
 }
 
