@@ -14,6 +14,10 @@ impl Program {
         self.statements.push(statement);
     }
 
+    pub fn statement_iter(&self) -> std::slice::Iter<'_, StatementNode> {
+        self.statements.iter()
+    }
+
     pub fn literal(&self) -> String {
         let mut literal = String::new();
         for statement in &self.statements {
