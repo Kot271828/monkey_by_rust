@@ -1,11 +1,14 @@
 use crate::ast::*;
 use crate::object::*;
+use crate::env::*;
 
-pub struct Evaluator {}
+pub struct Evaluator {
+    env: Enviroment,
+}
 
 impl Evaluator {
     pub fn new() -> Self {
-        Evaluator {}
+        Evaluator { env: Enviroment::new(),}
     }
 
     pub fn eavl_program(&self, program: &Program) -> Result<Object, String> {
@@ -30,7 +33,7 @@ impl Evaluator {
             StatementNode::LetStatement {
                 identifier: _,
                 value: _,
-            } => panic!(""),
+            } => self.eval_let_statement(statement)?,
             StatementNode::ExpressionStatement { expression: _ } => {
                 self.eval_expression_statement(statement)?
             }
@@ -40,6 +43,10 @@ impl Evaluator {
         };
 
         Ok(result)
+    }
+
+    fn eval_let_statement(&self, statement: &StatementNode) -> Result<Object, String> {
+        Err("".to_string())
     }
 
     fn eval_return_statement(&self, statement: &StatementNode) -> Result<Object, String> {
@@ -384,6 +391,19 @@ mod test {
             "if (10 > 1) { if (10 > 1) { return 10; } return 1; }",
         ];
         let expect_strings = vec!["10", "10", "10", "10", "10"];
+
+        test_eval(expect_strings, test_strings);
+    }
+
+    #[test]
+    fn test_eval_let_statements() {
+        let test_strings = vec![
+            "let a = 5; a;",
+            "let a = 5 * 5; a;",
+            "lat a = 5; let b = a; b;",
+            "let a = 5; let b = a; let c = a + b + 5; c;",
+        ];
+        let expect_strings = vec!["5", "25", "5", "15"];
 
         test_eval(expect_strings, test_strings);
     }

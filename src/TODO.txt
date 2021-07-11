@@ -1,4 +1,0 @@
-Lexer
-[x] read_char, peek_char
-[x] test of read_char, peek_char
-[ ] read_token
