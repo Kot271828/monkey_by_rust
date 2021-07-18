@@ -28,6 +28,7 @@ impl Program {
 }
 
 // StatementNode
+#[derive(Clone)]
 pub enum StatementNode {
     LetStatement {
         identifier: Box<ExpressionNode>,
@@ -68,16 +69,19 @@ impl StatementNode {
 }
 
 // ExpressionNode
+#[derive(Clone)]
 pub enum BooleanType {
     True,
     False,
 }
 
+#[derive(Clone)]
 pub enum PrefixOperatorType {
     Minus,
     Bang,
 }
 
+#[derive(Clone)]
 pub enum InfixOperatorType {
     Plus,
     Minus,
@@ -89,6 +93,7 @@ pub enum InfixOperatorType {
     Gt,
 }
 
+#[derive(Clone)]
 pub enum ExpressionNode {
     Identifier {
         literal: Vec<char>,

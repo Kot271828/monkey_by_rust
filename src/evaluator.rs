@@ -150,6 +150,7 @@ impl Evaluator {
                 consequence: _,
                 alternative: _,
             } => self.eval_if_expression(expression, env)?,
+            ExpressionNode::FunctionLiteral { parameters: _,  body: _} => self.eval_function_literal(expression)?,
             _ => panic!(""),
         };
 
@@ -190,10 +191,12 @@ impl Evaluator {
             ExpressionNode::Identifier { literal } => literal,
             _ => return Err("in eval_identifier".to_string()),
         };
+
+        let literal_string = literal.iter().collect::<String>();
         let object = env
             .borrow()
-            .get(&literal.iter().collect::<String>())
-            .ok_or("in eval_identifier".to_string())?;
+            .get(&literal_string)
+            .ok_or(format!("{} is not founded.", &literal_string))?;
         Ok(object)
     }
 
@@ -346,6 +349,24 @@ impl Evaluator {
         Ok(result)
     }
 
+    fn eval_function_literal(&self, expression: &ExpressionNode) -> Result<Object, String> {
+        let (parameters, body)  = match &expression {
+            &ExpressionNode::FunctionLiteral {parameters, body} => (parameters, body),
+            _ => return Err("om eval_function_literal".to_string())
+        };
+
+        let mut parameter_strings = Vec::<String>::new();
+        for parameter in parameters {
+            if let ExpressionNode::Identifier{ literal} = parameter.as_ref() {
+                parameter_strings.push(literal.iter().collect::<String>());
+            } else {
+                return Err("in eval_function_literal".to_string())
+            }
+        };
+
+        Ok(Object::FunctionObject{parameters: parameter_strings, body: Box::new(body.as_ref().clone()) ,env: None})
+    }
+
     fn is_truthy(&self, object: &Object) -> bool {
         match object {
             Object::Null => false,
@@ -477,6 +498,16 @@ mod test {
             "let a = 5; let b = a; let c = a + b + 5; c;",
         ];
         let expect_strings = vec!["5", "25", "5", "15"];
+
+        test_eval(expect_strings, test_strings);
+    }
+
+        #[test]
+    fn test_eval_function_literals() {
+        let test_strings = vec![
+            "fn(x) { x + 2; };"
+        ];
+        let expect_strings = vec!["fn(x) { (x + 2); }"];
 
         test_eval(expect_strings, test_strings);
     }
