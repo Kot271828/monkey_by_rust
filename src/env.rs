@@ -16,7 +16,7 @@ impl Enviroment {
         self.store.insert(name, object);
     }
 
-    pub fn get(&self, name: &str) -> Option<&Object> {
-        self.store.get(name)
+    pub fn get(&self, name: &str) -> Option<Object> {
+        self.store.get(name).map(|o| (*o).clone().to_owned())
     }
 }

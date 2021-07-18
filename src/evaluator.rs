@@ -1,20 +1,24 @@
 use crate::ast::*;
-use crate::object::*;
 use crate::env::*;
+use crate::object::*;
+use std::cell::RefCell;
+use std::rc::Rc;
 
-pub struct Evaluator {
-    env: Enviroment,
-}
+pub struct Evaluator {}
 
 impl Evaluator {
     pub fn new() -> Self {
-        Evaluator { env: Enviroment::new(),}
+        Evaluator {}
     }
 
-    pub fn eavl_program(&self, program: &Program) -> Result<Object, String> {
+    pub fn eavl_program(
+        &self,
+        program: &Program,
+        env: &mut Rc<RefCell<Enviroment>>,
+    ) -> Result<Object, String> {
         let mut result = Object::Null;
         for statement in program.statement_iter() {
-            result = self.eval_statement(statement)?;
+            result = self.eval_statement(statement, env)?;
             result = match result {
                 Object::ReturnValue { value } => return Ok(*value),
                 _ => result,
@@ -24,35 +28,59 @@ impl Evaluator {
         Ok(result)
     }
 
-    fn eval_statement(&self, statement: &StatementNode) -> Result<Object, String> {
+    fn eval_statement(
+        &self,
+        statement: &StatementNode,
+        env: &mut Rc<RefCell<Enviroment>>,
+    ) -> Result<Object, String> {
         let result: Object;
         result = match statement {
             StatementNode::ReturnStatement { return_value: _ } => {
-                self.eval_return_statement(statement)?
+                self.eval_return_statement(statement, env)?
             }
             StatementNode::LetStatement {
                 identifier: _,
                 value: _,
-            } => self.eval_let_statement(statement)?,
+            } => self.eval_let_statement(statement, env)?,
             StatementNode::ExpressionStatement { expression: _ } => {
-                self.eval_expression_statement(statement)?
+                self.eval_expression_statement(statement, env)?
             }
             StatementNode::BlockStatement { statements: _ } => {
-                self.eval_block_statement(statement)?
+                self.eval_block_statement(statement, env)?
             }
         };
 
         Ok(result)
     }
 
-    fn eval_let_statement(&self, statement: &StatementNode) -> Result<Object, String> {
-        Err("".to_string())
+    fn eval_let_statement(
+        &self,
+        statement: &StatementNode,
+        env: &mut Rc<RefCell<Enviroment>>,
+    ) -> Result<Object, String> {
+        let (identifier, value) = match statement {
+            StatementNode::LetStatement { identifier, value } => (identifier, value),
+            _ => return Err("in eval_let_statement".to_string()),
+        };
+        let literal = match identifier.as_ref() {
+            ExpressionNode::Identifier { literal } => literal,
+            _ => return Err("in eval_let_statement".to_string()),
+        };
+        let object = self.eval_expression(value, env)?;
+        env.as_ref()
+            .borrow_mut()
+            .set(literal.iter().collect::<String>(), object);
+        Ok(Object::Null)
     }
 
-    fn eval_return_statement(&self, statement: &StatementNode) -> Result<Object, String> {
+    fn eval_return_statement(
+        &self,
+        statement: &StatementNode,
+        env: &mut Rc<RefCell<Enviroment>>,
+    ) -> Result<Object, String> {
         let result = match statement {
             StatementNode::ReturnStatement { return_value } => {
-                self.eval_expression(return_value)?
+                self.eval_expression(return_value, env)?
             }
             _ => return Err("in eval_return_statement".to_string()),
         };
@@ -62,10 +90,14 @@ impl Evaluator {
         })
     }
 
-    fn eval_expression_statement(&self, statement: &StatementNode) -> Result<Object, String> {
+    fn eval_expression_statement(
+        &self,
+        statement: &StatementNode,
+        env: &mut Rc<RefCell<Enviroment>>,
+    ) -> Result<Object, String> {
         let expression = match statement {
             StatementNode::ExpressionStatement { expression } => {
-                self.eval_expression(expression)?
+                self.eval_expression(expression, env)?
             }
             _ => return Err("in eval_expression_statement".to_string()),
         };
@@ -73,7 +105,11 @@ impl Evaluator {
         Ok(expression)
     }
 
-    fn eval_block_statement(&self, statement: &StatementNode) -> Result<Object, String> {
+    fn eval_block_statement(
+        &self,
+        statement: &StatementNode,
+        env: &mut Rc<RefCell<Enviroment>>,
+    ) -> Result<Object, String> {
         let statements = match statement {
             StatementNode::BlockStatement { statements } => statements,
             _ => return Err("in eval_block_statement".to_string()),
@@ -81,7 +117,7 @@ impl Evaluator {
 
         let mut result = Object::Null;
         for statement in statements {
-            result = self.eval_statement(statement)?;
+            result = self.eval_statement(statement, env)?;
             result = match result {
                 Object::ReturnValue { value: _ } => return Ok(result),
                 _ => result,
@@ -91,24 +127,29 @@ impl Evaluator {
         Ok(result)
     }
 
-    fn eval_expression(&self, expression: &ExpressionNode) -> Result<Object, String> {
+    fn eval_expression(
+        &self,
+        expression: &ExpressionNode,
+        env: &mut Rc<RefCell<Enviroment>>,
+    ) -> Result<Object, String> {
         let result = match expression {
             ExpressionNode::Integer { literal: _ } => self.eval_integer(expression)?,
             ExpressionNode::Boolean { boolean_type: _ } => self.eval_boolean(expression)?,
+            ExpressionNode::Identifier { literal: _ } => self.eval_identifier(expression, env)?,
             ExpressionNode::PrefixOperator {
                 operator_type: _,
                 right: _,
-            } => self.eval_prefix_operator(expression)?,
+            } => self.eval_prefix_operator(expression, env)?,
             ExpressionNode::InfixOperator {
                 operator_type: _,
                 left: _,
                 right: _,
-            } => self.eval_infix_operator(expression)?,
+            } => self.eval_infix_operator(expression, env)?,
             ExpressionNode::IfExpression {
                 condition: _,
                 consequence: _,
                 alternative: _,
-            } => self.eval_if_expression(expression)?,
+            } => self.eval_if_expression(expression, env)?,
             _ => panic!(""),
         };
 
@@ -140,7 +181,27 @@ impl Evaluator {
         Ok(Object::Boolean { value })
     }
 
-    fn eval_prefix_operator(&self, expression: &ExpressionNode) -> Result<Object, String> {
+    fn eval_identifier(
+        &self,
+        expression: &ExpressionNode,
+        env: &Rc<RefCell<Enviroment>>,
+    ) -> Result<Object, String> {
+        let literal = match expression {
+            ExpressionNode::Identifier { literal } => literal,
+            _ => return Err("in eval_identifier".to_string()),
+        };
+        let object = env
+            .borrow()
+            .get(&literal.iter().collect::<String>())
+            .ok_or("in eval_identifier".to_string())?;
+        Ok(object)
+    }
+
+    fn eval_prefix_operator(
+        &self,
+        expression: &ExpressionNode,
+        env: &mut Rc<RefCell<Enviroment>>,
+    ) -> Result<Object, String> {
         let (operator_type, right) = match expression {
             ExpressionNode::PrefixOperator {
                 operator_type,
@@ -149,7 +210,7 @@ impl Evaluator {
             _ => return Err("in eval_boolean".to_string()),
         };
 
-        let right_object = self.eval_expression(right)?;
+        let right_object = self.eval_expression(right, env)?;
         let result = match (operator_type, right_object) {
             (PrefixOperatorType::Minus, Object::Integer { value }) => {
                 Object::Integer { value: -1 * value }
@@ -163,7 +224,11 @@ impl Evaluator {
         Ok(result)
     }
 
-    fn eval_infix_operator(&self, expression: &ExpressionNode) -> Result<Object, String> {
+    fn eval_infix_operator(
+        &self,
+        expression: &ExpressionNode,
+        env: &mut Rc<RefCell<Enviroment>>,
+    ) -> Result<Object, String> {
         let (oprator_type, left, right) = match expression {
             ExpressionNode::InfixOperator {
                 operator_type,
@@ -173,8 +238,8 @@ impl Evaluator {
             _ => return Err("in eval_infix_operator".to_string()),
         };
 
-        let left_object = self.eval_expression(left)?;
-        let right_object = self.eval_expression(right)?;
+        let left_object = self.eval_expression(left, env)?;
+        let right_object = self.eval_expression(right, env)?;
 
         let result = match (oprator_type, left_object, right_object) {
             (
@@ -253,7 +318,11 @@ impl Evaluator {
         Ok(result)
     }
 
-    fn eval_if_expression(&self, expression: &ExpressionNode) -> Result<Object, String> {
+    fn eval_if_expression(
+        &self,
+        expression: &ExpressionNode,
+        env: &mut Rc<RefCell<Enviroment>>,
+    ) -> Result<Object, String> {
         let (condition, consequence, alternative) = match expression {
             ExpressionNode::IfExpression {
                 condition,
@@ -263,12 +332,12 @@ impl Evaluator {
             _ => return Err("in eval_if_expression".to_string()),
         };
 
-        let condition_object = self.eval_expression(condition)?;
+        let condition_object = self.eval_expression(condition, env)?;
         let result = if self.is_truthy(&condition_object) {
-            self.eval_statement(consequence)?
+            self.eval_statement(consequence, env)?
         } else {
             if alternative.is_some() {
-                self.eval_statement(alternative.as_ref().unwrap())?
+                self.eval_statement(alternative.as_ref().unwrap(), env)?
             } else {
                 Object::Null
             }
@@ -295,7 +364,11 @@ mod test {
         let evaluator = Evaluator::new();
         for (&test_string, &expect_sting) in test_strings.iter().zip(expect_strings.iter()) {
             let program = crate::parser::parse(crate::lexer::lex(test_string)).unwrap();
-            let actual_string = evaluator.eavl_program(&program).unwrap().literal();
+            let mut global_env = Rc::new(RefCell::new(Enviroment::new()));
+            let actual_string = evaluator
+                .eavl_program(&program, &mut global_env)
+                .unwrap()
+                .literal();
             assert_eq!(expect_sting, actual_string);
         }
     }
@@ -400,7 +473,7 @@ mod test {
         let test_strings = vec![
             "let a = 5; a;",
             "let a = 5 * 5; a;",
-            "lat a = 5; let b = a; b;",
+            "let a = 5; let b = a; b;",
             "let a = 5; let b = a; let c = a + b + 5; c;",
         ];
         let expect_strings = vec!["5", "25", "5", "15"];
