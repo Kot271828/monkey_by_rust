@@ -2,6 +2,7 @@ use crate::ast::*;
 use crate::env::*;
 use crate::object::*;
 use std::cell::RefCell;
+use std::iter::Zip;
 use std::rc::Rc;
 
 pub struct Evaluator {}
@@ -69,7 +70,7 @@ impl Evaluator {
         let object = self.eval_expression(value, env)?;
         env.as_ref()
             .borrow_mut()
-            .set(literal.iter().collect::<String>(), object);
+            .set(&literal.iter().collect::<String>(), object);
         Ok(Object::Null)
     }
 
@@ -150,7 +151,14 @@ impl Evaluator {
                 consequence: _,
                 alternative: _,
             } => self.eval_if_expression(expression, env)?,
-            ExpressionNode::FunctionLiteral { parameters: _,  body: _} => self.eval_function_literal(expression)?,
+            ExpressionNode::FunctionLiteral {
+                parameters: _,
+                body: _,
+            } => self.eval_function_literal(expression, env)?,
+            ExpressionNode::CallExpression {
+                function: _,
+                arguments: _,
+            } => self.eval_call_expression(expression, env)?,
             _ => panic!(""),
         };
 
@@ -349,22 +357,66 @@ impl Evaluator {
         Ok(result)
     }
 
-    fn eval_function_literal(&self, expression: &ExpressionNode) -> Result<Object, String> {
-        let (parameters, body)  = match &expression {
-            &ExpressionNode::FunctionLiteral {parameters, body} => (parameters, body),
-            _ => return Err("om eval_function_literal".to_string())
+    fn eval_function_literal(&self, expression: &ExpressionNode, env: &mut Rc<RefCell<Enviroment>>) -> Result<Object, String> {
+        let (parameters, body) = match expression {
+            ExpressionNode::FunctionLiteral { parameters, body } => (parameters, body),
+            _ => return Err(format!("on eval_function_literal. {}", expression.literal())),
         };
 
         let mut parameter_strings = Vec::<String>::new();
         for parameter in parameters {
-            if let ExpressionNode::Identifier{ literal} = parameter.as_ref() {
+            if let ExpressionNode::Identifier { literal } = parameter.as_ref() {
                 parameter_strings.push(literal.iter().collect::<String>());
             } else {
-                return Err("in eval_function_literal".to_string())
+                return Err("in eval_function_literal".to_string());
             }
+        }
+
+        Ok(Object::FunctionObject {
+            parameters: parameter_strings,
+            body: Box::new(body.as_ref().clone()),
+            env: Some(Rc::clone(env)),
+        })
+    }
+
+    fn eval_call_expression(
+        &self,
+        expression: &ExpressionNode,
+        env: &mut Rc<RefCell<Enviroment>>,
+    ) -> Result<Object, String> {
+        let (function, arguments) = match expression {
+            ExpressionNode::CallExpression {
+                function,
+                arguments,
+            } => (function, arguments),
+            _ => return Err("in eval_call_expression".to_string()),
         };
 
-        Ok(Object::FunctionObject{parameters: parameter_strings, body: Box::new(body.as_ref().clone()) ,env: None})
+        let function = self.eval_expression(function, env)?;
+        let (parameters, body, func_env) = match function {
+            Object::FunctionObject {
+                parameters,
+                body,
+                env: func_env,
+            } => (parameters, body, func_env.unwrap()),
+            _ => return Err("".to_string()),
+        };
+
+        let mut new_env = Enviroment::new();
+        new_env.add_outer(&func_env);
+
+        for (parameter, argument) in parameters.iter().zip(arguments.iter()) {
+            let evaled_object = self.eval_expression(argument, env)?;
+            new_env.set(parameter, evaled_object);
+        }
+
+        let func_evaled_object =
+            self.eval_block_statement(body.as_ref(), &mut Rc::new(RefCell::new(new_env)))?;
+
+        match func_evaled_object {
+            Object::ReturnValue { value } => Ok(value.as_ref().to_owned()),
+            _ => Ok(func_evaled_object),
+        }
     }
 
     fn is_truthy(&self, object: &Object) -> bool {
@@ -502,12 +554,27 @@ mod test {
         test_eval(expect_strings, test_strings);
     }
 
-        #[test]
+    #[test]
     fn test_eval_function_literals() {
-        let test_strings = vec![
-            "fn(x) { x + 2; };"
-        ];
+        let test_strings = vec!["fn(x) { x + 2; };"];
         let expect_strings = vec!["fn(x) { (x + 2); }"];
+
+        test_eval(expect_strings, test_strings);
+    }
+
+    #[test]
+    fn test_eval_function_applications() {
+        let test_strings = vec![
+            "let identity = fn(x) { x; }; identity(5);",
+            "let identity = fn(x) { return x; }; identity(10);",
+            "let double = fn(x) { x * 2; }; double(10);",
+            "let add = fn(x, y) { x + y; }; add(5, 10);",
+            "let add = fn(x, y) { x + y; }; add(5 + 5, add(10, 10));",
+            "let add = fn(a, b) { a + b; }; 
+            let applyFunc = fn(a, b, func) { func(a, b) };
+            applyFunc(10, 2, add);"
+        ];
+        let expect_strings = vec!["5", "10", "20", "15", "30", "12"];
 
         test_eval(expect_strings, test_strings);
     }
