@@ -9,3 +9,6 @@ A moneky interpretter written by Rust. Monkey is a programming language apper in
 ## Install
 
 ## TODO
+
+- Write monkey's document
+- Add REPL
